@@ -61,6 +61,11 @@ def load_all():
 load_all()
 
 # Callbacks
+def build_goldmine():
+    sound_service.play("click")
+    game_state.select(GoldMine)
+    print("🏗️ Gold Mine selected")
+
 def train_barbarian():
     sound_service.play("click")
     game_state.select_unit(Barbarian)
@@ -84,15 +89,15 @@ def clear_grid():
             grid.grid[row][col] = None
     print("🧼 Grid cleared.")
 
-def collect_all_resources():
+def collect_gold_from_goldmine(row, col):
     sound_service.play("click")
-    total = 0
-    for row in grid.grid:
-        for building in row:
-            if isinstance(building, GoldMine):
-                total += building.collect()
-    resources.add_gold(total)
-    print(f"💰 Collected {total} gold.")
+    building = grid.grid[row][col]
+    if isinstance(building, GoldMine):
+        collected_gold = building.collect()
+        resources.add_gold(collected_gold)
+        print(f"💰 Collected {collected_gold} gold from Gold Mine at ({row}, {col}).")
+    else:
+        print("❌ This is not a Gold Mine.")
 
 # UI Buttons
 buttons = [
@@ -100,7 +105,7 @@ buttons = [
     Button(50, 100, 180, 40, "Train Archer (20🪙)", train_archer, sound=sound_service.sounds["click"]),
     Button(50, 200, 180, 40, "Clear Grid", clear_grid, sound=sound_service.sounds["click"]),
     Button(50, 250, 180, 40, "Reset Resources", reset_resources, sound=sound_service.sounds["click"]),
-    Button(50, 300, 180, 40, "Collect Gold", collect_all_resources, sound=sound_service.sounds["click"])
+    Button(50, 350, 180, 40, "Build Gold Mine (50🪙)", build_goldmine, sound=sound_service.sounds["click"]),
 ]
 
 # Main Loop
@@ -109,10 +114,12 @@ while running:
     screen.fill((245, 245, 245))
     grid.draw(screen)
 
-    for row in grid.grid:
-        for building in row:
+    # Update all Gold Mines (produce gold)
+    for row in range(grid.rows):
+        for col in range(grid.cols):
+            building = grid.grid[row][col]
             if isinstance(building, GoldMine):
-                building.update()
+                building.produce()
 
     for button in buttons:
         button.draw(screen)
@@ -126,26 +133,38 @@ while running:
             save_all()
             running = False
 
-        elif event.type == pygame.MOUSEBUTTONDOWN and game_state.get_selected_unit():
-            cost = game_state.get_cost()
-            if resources.spend_gold(cost):
-                unit = game_state.get_selected_unit()()
-                success, result = grid.place_unit(*event.pos, unit)
-                if success:
-                    sound_service.play("place")
-                    print(f"{unit._name} placed at {result}")
-                    game_state.clear_selection()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # Check if a GoldMine is clicked for gold collection
+            mouse_x, mouse_y = event.pos
+            row, col = grid.get_cell_at(mouse_x, mouse_y)
+
+            if row is not None and col is not None:
+                collect_gold_from_goldmine(row, col)
+
+            # Handle other grid interactions (placing units, etc.)
+            elif game_state.get_selected():
+                selected_class = game_state.get_selected()
+                cost = game_state.get_cost()
+
+                if resources.spend_gold(cost):
+                    unit_or_building = selected_class()
+                    success, result = grid.place_unit(*event.pos, unit_or_building)
+
+                    if success:
+                        sound_service.play("place")
+                        print(f"{unit_or_building._name} placed at {result}")
+                        game_state.clear_selection()
+                    else:
+                        print("❌", result)
+                        resources.add_gold(cost)
                 else:
-                    print("❌", result)
-                    resources.add_gold(cost)
-            else:
-                print("❌ Not enough gold.")
+                    print("❌ Not enough gold.")
 
         for button in buttons:
             button.handle_event(event)
 
     # Show selected unit
-    label = game_state.get_selected_unit().__name__ if game_state.get_selected_unit() else "None"
+    label = game_state.get_selected().__name__ if game_state.get_selected() else "None"
     screen.blit(font.render(f"Selected: {label}", True, (0, 0, 200)), (50, 160))
 
     pygame.display.flip()

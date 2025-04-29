@@ -1,22 +1,21 @@
-from unit.barbarian import Barbarian
-from unit.archer import Archer
-
 class GameState:
     def __init__(self):
-        self.selected_unit = None
+        self.selected_class = None  # Could be a unit or building
 
-    def select_unit(self, unit_class):
-        self.selected_unit = unit_class
-
-    def get_selected_unit(self):
-        return self.selected_unit
-
-    def get_cost(self):
-        if self.selected_unit == Barbarian:
-            return 30
-        elif self.selected_unit == Archer:
-            return 20
-        return 0
+    def select(self, cls):  # Accepts any class like Barbarian or GoldMine
+        self.selected_class = cls
 
     def clear_selection(self):
-        self.selected_unit = None
+        self.selected_class = None
+
+    def get_selected(self):
+        return self.selected_class
+
+    def get_cost(self):
+        if self.selected_class.__name__ == "Barbarian":
+            return 30
+        elif self.selected_class.__name__ == "Archer":
+            return 20
+        elif self.selected_class.__name__ == "GoldMine":
+            return 50
+        return 0

@@ -22,7 +22,6 @@ class Grid:
                 )
                 pygame.draw.rect(surface, (200, 200, 200), rect, 1)
 
-
                 unit = self.grid[row][col]
                 if unit:
                     if isinstance(unit, GoldMine):
@@ -48,3 +47,12 @@ class Grid:
             else:
                 return False, "Tile already occupied."
         return False, "Clicked outside the grid."
+
+    def get_cell_at(self, x, y):
+        """Returns the (row, col) of the cell that was clicked, or None if out of bounds."""
+        col = (x - self.offset_x) // self.tile_size
+        row = (y - self.offset_y) // self.tile_size
+
+        if 0 <= row < self.rows and 0 <= col < self.cols:
+            return row, col
+        return None
