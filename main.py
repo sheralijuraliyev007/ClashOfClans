@@ -8,11 +8,27 @@ from grid.grid import Grid
 from utils.file_manager import FileManager
 from services.sound_service import SoundService
 from core.game_state import GameState
+from building.elixir_collector import ElixirCollector
+import os
+
+
+
 
 # Initialize
 pygame.init()
-WIDTH, HEIGHT = 600, 400
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+info = pygame.display.Info()
+WIDTH, HEIGHT = 1000, 700  # or any size you prefer
+screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+
+
+
+terrain_image = pygame.image.load("assets/terrain.jpg").convert()
+terrain_image = pygame.transform.scale(terrain_image, (WIDTH, HEIGHT))  # ✅ match screen
+
+
+
+
+
 pygame.display.set_caption("Mini Clash UI")
 font = pygame.font.SysFont(None, 32)
 small_font = pygame.font.SysFont(None, 18)
@@ -50,6 +66,8 @@ def load_all():
             unit = Archer()
         elif unit_type == "GoldMine":
             unit = GoldMine()
+        elif unit_type == "ElixirCollector":
+            unit = ElixirCollector("Elixir Collector")
         else:
             continue
         grid.grid[row][col] = unit
@@ -66,14 +84,19 @@ def build_goldmine():
     game_state.select(GoldMine)
     print("🏗️ Gold Mine selected")
 
+def build_elixir_collector():
+    sound_service.play("click")
+    game_state.select(ElixirCollector)
+    print("🧪 Elixir Collector selected")
+
 def train_barbarian():
     sound_service.play("click")
-    game_state.select_unit(Barbarian)
+    game_state.select(Barbarian)
     print("🧍‍♂️ Barbarian selected")
 
 def train_archer():
     sound_service.play("click")
-    game_state.select_unit(Archer)
+    game_state.select(Archer)
     print("🏹 Archer selected")
 
 def reset_resources():
@@ -89,66 +112,74 @@ def clear_grid():
             grid.grid[row][col] = None
     print("🧼 Grid cleared.")
 
-def collect_gold_from_goldmine(row, col):
-    sound_service.play("click")
-    building = grid.grid[row][col]
-    if isinstance(building, GoldMine):
-        collected_gold = building.collect()
-        resources.add_gold(collected_gold)
-        print(f"💰 Collected {collected_gold} gold from Gold Mine at ({row}, {col}).")
-    else:
-        print("❌ This is not a Gold Mine.")
-
 # UI Buttons
 buttons = [
     Button(50, 50, 180, 40, "Train Barbarian (30🪙)", train_barbarian, sound=sound_service.sounds["click"]),
     Button(50, 100, 180, 40, "Train Archer (20🪙)", train_archer, sound=sound_service.sounds["click"]),
+    Button(50, 150, 180, 40, "Build Elixir Collector (50🪙)", build_elixir_collector, sound=sound_service.sounds["click"]),
     Button(50, 200, 180, 40, "Clear Grid", clear_grid, sound=sound_service.sounds["click"]),
     Button(50, 250, 180, 40, "Reset Resources", reset_resources, sound=sound_service.sounds["click"]),
-    Button(50, 350, 180, 40, "Build Gold Mine (50🪙)", build_goldmine, sound=sound_service.sounds["click"]),
+    Button(50, 300, 180, 40, "Build Gold Mine (50🪙)", build_goldmine, sound=sound_service.sounds["click"])
 ]
 
 # Main Loop
 running = True
 while running:
-    screen.fill((245, 245, 245))
+    screen.blit(terrain_image, (0, 0)) # ✅ Now draws every frame
+
     grid.draw(screen)
 
-    # Update all Gold Mines (produce gold)
+    # Update buildings
     for row in range(grid.rows):
         for col in range(grid.cols):
             building = grid.grid[row][col]
-            if isinstance(building, GoldMine):
+            if isinstance(building, GoldMine) or isinstance(building, ElixirCollector):
                 building.produce()
 
+    # Draw buttons
     for button in buttons:
         button.draw(screen)
 
+    # Display resource info
     balance = resources.get_balance()
     screen.blit(font.render(f"Gold: {balance['gold']}", True, (0, 0, 0)), (400, 50))
     screen.blit(font.render(f"Elixir: {balance['elixir']}", True, (0, 0, 0)), (400, 90))
 
+    # Handle events
     for event in pygame.event.get():
+        if event.type == pygame.VIDEORESIZE:
+            WIDTH, HEIGHT = event.w, event.h
+            screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
+            terrain_image = pygame.transform.scale(pygame.image.load("assets/terrain.jpg"), (WIDTH, HEIGHT))
+
+            print(f"📐 Resized to: {event.w}x{event.h}")
+
         if event.type == pygame.QUIT:
             save_all()
             running = False
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            running = False
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            # Check if a GoldMine is clicked for gold collection
+
+
+        for button in buttons:  # ✅ Moved inside event loop
+            button.handle_event(event)
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
             mouse_x, mouse_y = event.pos
-            row, col = grid.get_cell_at(mouse_x, mouse_y)
+            cell = grid.get_cell_at(mouse_x, mouse_y)
 
-            if row is not None and col is not None:
-                collect_gold_from_goldmine(row, col)
-
-            # Handle other grid interactions (placing units, etc.)
-            elif game_state.get_selected():
+            if game_state.get_selected():
                 selected_class = game_state.get_selected()
                 cost = game_state.get_cost()
 
                 if resources.spend_gold(cost):
-                    unit_or_building = selected_class()
-                    success, result = grid.place_unit(*event.pos, unit_or_building)
+                    try:
+                        unit_or_building = selected_class()
+                    except TypeError:
+                        unit_or_building = selected_class(name=selected_class.__name__)
+
+                    success, result = grid.place_unit(mouse_x, mouse_y, unit_or_building)
 
                     if success:
                         sound_service.play("place")
@@ -160,12 +191,23 @@ while running:
                 else:
                     print("❌ Not enough gold.")
 
-        for button in buttons:
-            button.handle_event(event)
+            elif cell:
+                row, col = cell
+                building = grid.grid[row][col]
 
-    # Show selected unit
-    label = game_state.get_selected().__name__ if game_state.get_selected() else "None"
-    screen.blit(font.render(f"Selected: {label}", True, (0, 0, 200)), (50, 160))
+                if isinstance(building, GoldMine):
+                    collected = building.collect()
+                    resources.add_gold(collected)
+                    print(f"💰 Collected {collected} gold from Gold Mine.")
+                elif isinstance(building, ElixirCollector):
+                    collected = building.collect()
+                    resources.add_elixir(collected)
+                    print(f"🧪 Collected {collected} elixir from Elixir Collector.")
+
+    # Draw selected unit/building label
+    selected = game_state.get_selected()
+    label = selected.__name__ if selected else "None"
+    screen.blit(font.render(f"Selected: {label}", True, (0, 0, 200)), (50, 360))
 
     pygame.display.flip()
     clock.tick(60)
